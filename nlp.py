@@ -1,19 +1,19 @@
 import os
 import requests
 from PyPDF2 import PdfReader
-from crewai import Agent  # Use Agent for behavior, not Pydantic
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import Chroma
+from crewai import LLM, Agent  # Use Agent for behavior, not Pydantic
 from dotenv import load_dotenv
 import streamlit as st
 from pydantic import BaseModel  # Only for user input data validation
 
-
-
 # Load environment variables
 load_dotenv()
 
-
+# Initialize the LLM using Groq API key
+llm = LLM(
+    model="groq//llama-3.1-70b-versatile",
+    api_key=os.environ["GROQ_API_KEY"]
+)
 
 # Retrieve the API key from environment
 api_key = os.getenv("GROQ_API_KEY")
@@ -40,45 +40,77 @@ class IngestionAgent:
             for page in range(len(pdf_reader.pages)):
                 text += pdf_reader.pages[page].extract_text()
         
-        # Create embeddings from the extracted text
-        embeddings = OpenAIEmbeddings()
-        vector = embeddings.embed_documents([text])
+        # Call Groq API to get embeddings for the extracted text
+        embeddings = self.get_groq_embeddings(text)
+
+        # Store the embeddings in a mock Chroma (vector database)
+        # In practice, you would store these embeddings in a real vector store
+        # db = Chroma.from_documents([text], embeddings)
         
-        # Store the vector in Chroma (vector database)
-        db = Chroma.from_documents([text], embeddings)
-        
-        # Persist the database to disk
-        db.persist("db_path")  # Save the database to "db_path" folder
-        
+        # Simulate database persistence (e.g., saving embeddings to disk)
+        self.persist_embeddings(embeddings)
+
         # Return a simple message that the ingestion is complete
         return f"Ingestion Complete: The document has been ingested with goal: {self.goal}"
 
+    def get_groq_embeddings(self, text):
+        """
+        Call the Groq API to get embeddings for the given text.
+        Replace this URL and payload format with the correct ones from the Groq API.
+        """
+        url = "https://api.groq.com/v1/embeddings"  # Replace with the actual URL if necessary
+        headers = {
+            "Authorization": f"Bearer {os.getenv('GROQ_API_KEY')}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "text": text  # Replace with the actual payload format for Groq
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers)
+            response.raise_for_status()  # Raise an error if the request was unsuccessful
+            embeddings = response.json()  # This would be the embeddings response
+            return embeddings['data']  # Adjust based on the response format
+        except requests.exceptions.RequestException as e:
+            return f"Request failed: {e}"
+
+    def persist_embeddings(self, embeddings):
+        """
+        Persist the embeddings to a local file or database.
+        This is a mock function for saving embeddings.
+        """
+        # Simulate saving embeddings
+        with open('embeddings.txt', 'w') as file:
+            file.write(str(embeddings))
+        print("Embeddings saved to embeddings.txt")
+
 class QuestionAnsweringAgent:
     def answer_question(self, query):
-        # Load the Chroma DB from the persisted directory
-        db = Chroma("db_path", OpenAIEmbeddings())  # Initialize the Chroma object from the saved directory
-        relevant_docs = db.similarity_search(query)
-        
+        # Simulate loading the Chroma DB (in practice, load your embeddings)
+        # db = Chroma("db_path", OpenAIEmbeddings())  # Initialize the Chroma object from the saved directory
+        relevant_docs = "Simulated document response based on query."  # Replace with actual doc search
+
         # Groq API URL and headers (authentication)
         groq_api_url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {'Authorization': f"Bearer {os.getenv('GROQ_API_KEY')}", "Content-Type": "application/json"}
-        
+
         # Prepare the payload for the Groq API
         payload = {
             "model": "llama3-8b-8192",  # Replace with your desired model
             "messages": [{"role": "user", "content": query}]
         }
-        
+
         # Debugging: Print headers and payload
         print("Headers:", headers)
         print("Payload:", payload)
-        
+
         # Send the query to the Groq API
         try:
             response = requests.post(groq_api_url, json=payload, headers=headers)
             print("Response Status Code:", response.status_code)
             print("Response Content:", response.text)  # Log full response for debugging
-            
+
             if response.status_code == 200:
                 answer = response.json().get("choices", [{}])[0].get("message", {}).get("content", "No answer found.")
                 return f"Answer: {answer}"
@@ -124,7 +156,7 @@ def streamlit_interface():
     
     if query:
         st.write("Fetching the answer...")
-        
+
         # Initialize the question answering agent
         qa_agent = QuestionAnsweringAgent()
         answer = qa_agent.answer_question(query)
@@ -133,7 +165,3 @@ def streamlit_interface():
 # Step 5: Run the Streamlit app
 if __name__ == "__main__":
     streamlit_interface()
-
-
-
-
